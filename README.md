@@ -5,13 +5,13 @@ Features:
 
 [x]Mine
 
-[ ]Saving
+[x]Saving
 
-[ ]Reading
+[x]Reading
 
 [ ]Synching with other nodes
 
-[ ]Dealing with tree-like structures that can arrive
+[x]Dealing with tree-like structures that can arrive
 
 [ ]Querying structural data about the DAG
 
