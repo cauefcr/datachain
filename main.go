@@ -1,61 +1,57 @@
-package main
+package datachain
 
 import (
 	"encoding/json"
-	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"time"
-
+	// "fmt"
 	"ekyu.moe/cryptonight"
 )
 
-//todo:
-//sync blockchain with other nodes with some p2p thing
-//make blockchain create, comb, append, get
-
 type Block struct {
 	Time     uint64 `json:"t"`
-	ID       uint64 `json:"n"`
 	Nonce    uint64 `json:"nonce"`
 	Data     []byte `json:"data"`
 	Prevhash []byte `json:"phash"`
 }
 
+type Blockchain []Block
+
 var (
-	blockchain = []Block{}
-	blockfile  = "./blockchain.json"
 	difficulty = 1
 )
 
-func (b *Block) Mine() {
-	var prev Block
+//to-do: io.reader version for big chains
+func (bc Blockchain) Tofile(blockfile string) {
+	data, err := json.Marshal(bc)
+	check(err)
+	err = ioutil.WriteFile(blockfile, data, 0644)
+	check(err)
+}
+
+func BlockchainFromFile(blockfile string) Blockchain {
+	bc := Blockchain{}
+	data, err := ioutil.ReadFile(blockfile)
+	if err != nil {
+		return bc
+	}
+	json.Unmarshal(data, &bc)
+	return bc
+}
+
+func (b *Block) Mine(prev Block) {
+	// var prev Block
 	countzero := func(h []byte) int {
 		i := 0
 		for ; i < len(h) && h[i] == 0; i++ {
-			// fmt.Print(h[i])
-		}
-		if i != 0 {
-			fmt.Println(i)
+		
 		}
 		return i
-	}
-	if len(blockchain) > 0 {
-		prev = blockchain[len(blockchain)-1]
-	} else { // may satoshi have his keys
-		prev = Block{ID: 0, Data: []byte("The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"), Prevhash: []byte("000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"), Time: uint64(time.Now().UnixNano())}
-		hash := []byte{}
-		for countzero(hash) < difficulty {
-			prev.Nonce = rand.Uint64()
-			data, _ := json.Marshal(prev)
-			// check(err)
-			hash = cryptonight.Sum(data, 0)
-		}
-		blockchain = append(blockchain, prev)
 	}
 	data, err := json.Marshal(prev)
 	check(err)
 	b.Prevhash = cryptonight.Sum(data, 0)
-	b.ID = prev.ID + 1
 	b.Time = uint64(time.Now().UnixNano())
 
 	data, err = json.Marshal(b)
@@ -68,7 +64,32 @@ func (b *Block) Mine() {
 		check(err)
 		hash = cryptonight.Sum(data, 0)
 	}
-	blockchain = append(blockchain, *b)
+}
+
+func (bc Blockchain) Comb() Blockchain {
+	if len(bc) == 0{
+		return bc
+	}
+	i := 0
+	hashes := map[string]bool{}
+	data, err := json.Marshal(bc[i])
+	check(err)
+	hash := cryptonight.Sum(data, 0)
+	hashes[string(hash)] = true
+	for i = 1; i < len(bc); i++ {
+		hashes[string(hash)] = true
+		if !hashes[string(hash)] || bc[i-1].Time > bc[i].Time || bc[i].Time > uint64(time.Now().UnixNano()) || len(bc[i].Prevhash) == 0{
+			break
+		}
+		data, err := json.Marshal(bc[i])
+		if err != nil {
+			break
+		}
+		hash = cryptonight.Sum(data, 0)
+	}
+	bc = bc[:i]
+	
+	return bc
 }
 
 func check(e error) {
@@ -78,15 +99,5 @@ func check(e error) {
 }
 
 func init() {
-	//check existence of the blockchain file
-	//load it
-	//check for it's correctness
-	//if error fork on block
 	//capture os signals to dump blockchain to disk
-}
-
-func main() {
-	b := Block{Data: []byte("The Times 03/Jan/2009 Chancellor on brink of second bailout for banks")}
-	b.Mine()
-	fmt.Printf("%+v", blockchain)
 }
