@@ -9,11 +9,15 @@ import (
 func main() {
 	var (
 		blockchain = bc.Blockchain{}
-		blockfile  = "./blockchain.json"
+		blockfile  = "./blockchain.db"
 	)
 	// load blockchain from file (if it exists)
 	blockchain = bc.BlockchainFromFile(blockfile)
+
+	// blockchain = bc.NewBlockchain(blockfile)
+
 	// make a new block
+
 	nb := bc.Block{Data: []byte("The Times 03/Jan/2009 Chancellor on brink of second bailout for banks")}
 
 	// mine the block
@@ -24,12 +28,12 @@ func main() {
 	fmt.Printf("Correct: %+v", blockchain)
 
 	// uncomment to have an orphaned block
-	blockchain = append(blockchain, bc.Block{Data: []byte("The Times 03/Jan/2009 Chancellor on brink of second bailout for banks")})
-	blockchain = append(blockchain, bc.Block{Data: []byte("The Times 03/Jan/2009 Chancellor on brink of second bailout for banks")})
-	blockchain = append(blockchain, bc.Block{Data: []byte("The Times 03/Jan/2009 Chancellor on brink of second bailout for banks")})
-	nb.Mine(nb)
-	blockchain = append(blockchain, nb)
-	fmt.Printf("before: %v", blockchain)
+	// blockchain = append(blockchain, bc.Block{Data: []byte("The Times 03/Jan/2009 Chancellor on brink of second bailout for banks")})
+	// blockchain = append(blockchain, bc.Block{Data: []byte("The Times 03/Jan/2009 Chancellor on brink of second bailout for banks")})
+	// blockchain = append(blockchain, bc.Block{Data: []byte("The Times 03/Jan/2009 Chancellor on brink of second bailout for banks")})
+	// nb.Mine(nb)
+	// blockchain = append(blockchain, nb)
+	// fmt.Printf("before: %v", blockchain)
 	// check to see if the blockchain data makes sense, it will remove everything after a broken node
 	if clean_chain := blockchain.Comb(); len(clean_chain) != len(blockchain) {
 		fmt.Println("blocks were orphaned")

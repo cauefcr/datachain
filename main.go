@@ -1,19 +1,21 @@
+// https://astaxie.gitbooks.io/build-web-application-with-golang/content/en/05.3.html
 package datachain
 
 import (
+	"database/sql"
 	"encoding/json"
-	"io/ioutil"
+	"fmt"
 	"math/rand"
+	"os"
 	"time"
 
-	// "fmt"
 	"ekyu.moe/cryptonight"
-	"github.com/golang/snappy"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type Block struct {
-	Time     uint64 `json:"t"`
-	Nonce    uint64 `json:"nonce"`
+	Time     int64  `json:"t"`
+	Nonce    int64  `json:"nonce"`
 	Data     []byte `json:"data"`
 	Prevhash []byte `json:"phash"`
 }
@@ -24,26 +26,100 @@ var (
 	difficulty = 1
 )
 
+func LastBlocks(blockfile string, n int) Blockchain {
+	out := Blockchain{}
+
+	db, err := sql.Open("sqlite3", blockfile)
+
+	rows, err := db.Query(fmt.Sprintf("SELECT * FROM blockchain ORDER BY time,prevhash,nonce; DESC LIMIT %v", n))
+	check(err)
+
+	for rows.Next() {
+		tmp := Block{}
+		hash := []byte{}
+		err = rows.Scan(tmp.Time, tmp.Nonce, tmp.Data, tmp.Prevhash, &hash)
+		check(err)
+		out = append(out, tmp)
+	}
+	rows.Close()
+	db.Close()
+
+	return out
+}
+
 //to-do: io.reader version for big chains
 func (bc Blockchain) Tofile(blockfile string) {
-	data, err := json.Marshal(bc)
+	bc = bc.Comb()
+	db, err := sql.Open("sqlite3", blockfile)
 	check(err)
-	encdata := snappy.Encode(nil, data)
-	err = ioutil.WriteFile(blockfile, encdata, 0644)
+	for _, v := range bc {
+		stmt, err := db.Prepare(`INSERT INTO blockchain
+			(time, nonce, data, prevhash, hash) VALUES (?,?,?,?,?)
+		`)
+		check(err)
+		data, _ := json.Marshal(v)
+		hash := cryptonight.Sum(data, 0)
+		_, err = stmt.Exec(v.Time, v.Nonce, v.Data, v.Prevhash, hash)
+		check_and_skip(err)
+	}
+	// data, err := json.Marshal(bc)
+	// check(err)
+	// encdata := snappy.Encode(nil, data)
+	// err = ioutil.WriteFile(blockfile, encdata, 0644)
+	// check(err)
+	db.Close()
+}
+
+func NewBlockchain(blockfile string) Blockchain {
+	db, err := sql.Open("sqlite3", blockfile)
+
+	stmt, err := db.Prepare(`CREATE TABLE IF NOT EXISTS blockchain(
+		time BIG INT,
+		nonce BIG INT,
+		data TEXT,
+		prevhash TEXT,
+		hash TEXT PRIMARY KEY
+	);`)
+
 	check(err)
+
+	_, err = stmt.Exec()
+
+	// fmt.Printf("%+v", res)
+
+	db.Close()
+	return Blockchain{}
 }
 
 func BlockchainFromFile(blockfile string) Blockchain {
-	bc := Blockchain{}
-	data, err := ioutil.ReadFile(blockfile)
-	if err != nil {
-		return bc
-	}
-	encdata, err := snappy.Decode(nil, data)
+	// bc := Blockchain{}
+	// data, err := ioutil.ReadFile(blockfile)
+	// if err != nil {
+	// 	return bc
+	// }
+	// encdata, err := snappy.Decode(nil, data)
+	// check(err)
+	// json.Unmarshal(encdata, &bc)
+	// // fmt.Printf("blockchain: %+v", bc)
+	// return bc
+	db, err := sql.Open("sqlite3", blockfile)
 	check(err)
-	json.Unmarshal(encdata, &bc)
-	// fmt.Printf("blockchain: %+v", bc)
-	return bc
+
+	rows, err := db.Query("SELECT * FROM blockchain ORDER BY time,prevhash,nonce;")
+	check(err)
+
+	out := Blockchain{}
+
+	for rows.Next() {
+		tmp := Block{}
+		hash := []byte{}
+		err = rows.Scan(&tmp.Time, &tmp.Nonce, &tmp.Data, &tmp.Prevhash, &hash)
+		check(err)
+		out = append(out, tmp)
+	}
+	rows.Close()
+	db.Close()
+	return out
 }
 
 func (b *Block) Mine(prev Block) {
@@ -58,14 +134,14 @@ func (b *Block) Mine(prev Block) {
 	data, err := json.Marshal(prev)
 	check(err)
 	b.Prevhash = cryptonight.Sum(data, 0)
-	b.Time = uint64(time.Now().UnixNano())
+	b.Time = time.Now().UnixNano()
 
 	data, err = json.Marshal(b)
 	check(err)
 	hash := cryptonight.Sum(data, 0)
 
 	for countzero(hash) < difficulty {
-		b.Nonce = rand.Uint64()
+		b.Nonce = rand.Int63()
 		data, err = json.Marshal(b)
 		check(err)
 		hash = cryptonight.Sum(data, 0)
@@ -90,7 +166,7 @@ func (bc Blockchain) Comb() Blockchain {
 	for i = 1; i < len(bc); i++ {
 		hashes[string(hash)] = true
 	labelfor:
-		if !hashes[string(hash)] || bc[i-1].Time > bc[i].Time || bc[i].Time > uint64(time.Now().UnixNano()) || len(bc[i].Prevhash) == 0 {
+		if !hashes[string(hash)] || bc[i-1].Time > bc[i].Time || bc[i].Time > time.Now().UnixNano() || len(bc[i].Prevhash) == 0 {
 			// fmt.Printf("%v(len(%v),cap(%v)),", i, len(bc), cap(bc))
 			// break
 			// j++
@@ -104,10 +180,11 @@ func (bc Blockchain) Comb() Blockchain {
 		}
 		data, err := json.Marshal(bc[i])
 		if err != nil {
-			// hashes[string(hash)] = false
-			// remove(bc, i)
-			// i--
-			// break
+			bc = remove(bc, i)
+			if i >= len(bc) {
+				break
+			}
+			goto labelfor
 		}
 		hash = cryptonight.Sum(data, 0)
 	}
@@ -119,5 +196,11 @@ func (bc Blockchain) Comb() Blockchain {
 func check(e error) {
 	if e != nil {
 		panic(e)
+	}
+}
+
+func check_and_skip(e error) {
+	if e != nil {
+		fmt.Fprintf(os.Stderr, "%+v\n", e)
 	}
 }
