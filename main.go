@@ -1,12 +1,15 @@
-// https://astaxie.gitbooks.io/build-web-application-with-golang/content/en/05.3.html
 package datachain
 
 import (
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
+	"text/template"
 	"time"
 
 	"ekyu.moe/cryptonight"
@@ -18,6 +21,14 @@ type Block struct {
 	Nonce    int64  `json:"nonce"`
 	Data     []byte `json:"data"`
 	Prevhash []byte `json:"phash"`
+}
+
+type PrettyBlock struct {
+	Time     int64  `json:"time"`
+	Nonce    int64  `json:"nonce"`
+	Data     string `json:"data"`
+	Prevhash string `json:"prev_hash"`
+	Hash     string `json:"hash"`
 }
 
 type Blockchain []Block
@@ -200,7 +211,117 @@ func check(e error) {
 }
 
 func check_and_skip(e error) {
-	if e != nil {
+	if e != nil && fmt.Sprint(e)[:len("UNIQUE")] != "UNIQUE" {
 		fmt.Fprintf(os.Stderr, "%+v\n", e)
 	}
+}
+
+func queryBlocks(query, blockfile string) (Blockchain, error) {
+	db, err := sql.Open("sqlite3", blockfile)
+	// check(err)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := db.Query(query)
+	// check(err)
+	if err != nil {
+		return nil, err
+	}
+	out := Blockchain{}
+
+	for rows.Next() {
+		tmp := Block{}
+		hash := []byte{}
+		err = rows.Scan(&tmp.Time, &tmp.Nonce, &tmp.Data, &tmp.Prevhash, &hash)
+		if err != nil {
+			return nil, err
+		}
+		// check(err)
+		out = append(out, tmp)
+	}
+	rows.Close()
+	db.Close()
+	return out, nil
+}
+
+func (b Block) SaveBlock(blockfile string) error {
+	db, err := sql.Open("sqlite3", blockfile)
+	if err != nil {
+		return err
+	}
+	stmt, err := db.Prepare(`INSERT INTO blockchain
+			(time, nonce, data, prevhash, hash) VALUES (?,?,?,?,?)
+		`)
+	data, err := json.Marshal(b)
+	hash := cryptonight.Sum(data, 0)
+	stmt.Exec(b.Time, b.Nonce, b.Data, b.Prevhash, hash)
+	db.Close()
+	return nil
+}
+
+func (b Block) Prettify() PrettyBlock {
+	data, err := json.Marshal(b)
+	check(err)
+	return PrettyBlock{b.Time, b.Nonce, string(b.Data), hex.EncodeToString(b.Prevhash), hex.EncodeToString(cryptonight.Sum(data, 0))}
+}
+
+type PrettyChain []PrettyBlock
+
+func (bc Blockchain) Prettify() PrettyChain {
+	out := make(PrettyChain, len(bc))
+	for i := range bc {
+		out[i] = bc[i].Prettify()
+	}
+	return out
+}
+
+func Server(path string, bc Blockchain, blockfile string) {
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		tmpl := template.Must(template.ParseFiles("../index.html"))
+		if r.Method != http.MethodPost {
+			data := struct {
+				Bc  PrettyChain
+				Err bool
+			}{Bc: bc.Prettify(), Err: false}
+			tmpl.Execute(w, data)
+			return
+		}
+		data := struct {
+			Bc  PrettyChain
+			Err bool
+		}{Err: false}
+		tmp, err := queryBlocks(r.FormValue("query"), blockfile)
+		data.Bc = tmp.Prettify()
+		if err != nil {
+			// panic(err)
+			data := struct {
+				Err bool
+				Msg error
+			}{true, err}
+			tmpl.Execute(w, data)
+			return
+		}
+		tmpl.Execute(w, data)
+	})
+
+	http.HandleFunc("/add", func(w http.ResponseWriter, r *http.Request) {
+		tmpl := template.Must(template.ParseFiles("../add.html"))
+		if r.Method != http.MethodPost {
+			tmpl.Execute(w, bc[len(bc)-1].Prettify())
+			return
+		}
+		b := Block{Data: []byte(r.FormValue("data"))}
+		b.Mine(bc[len(bc)-1])
+		b.SaveBlock(blockfile)
+		p := b.Prettify()
+		tmpl.Execute(w, p)
+		// http.Redirect(w, r, "/", http.StatusSeeOther)
+	})
+
+	// fs := http.FileServer(http.Dir("static/"))
+	// http.Handle("/static/", http.StripPrefix("/static/", fs))
+
+	http.ListenAndServe(path, nil)
 }

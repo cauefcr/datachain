@@ -1,0 +1,42 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>DataChain</title>
+</head>
+<!-- TODO: 
+    mostrar blocos em cards com links pros outros blocos com o hash dele
+    explorar detalhes dos blocos, 
+    adicionar blocos a blockchain, 
+    filtrar com sql? 
+
+-->
+<body>
+    <form method="POST" action="/add">
+        <button type="submit">add</button>
+    </form>
+    Blocos:
+    <form method="POST">
+        <label for="query">Query SQL</label>
+        <input type="text" name="query" id="" style="width:85%">
+        <button type="submit">Run Query</button>
+    </form>
+    {{if .Err}}
+        {{.Msg}}
+    {{else}}
+    <ul>
+        {{range .Bc}}
+        <li>
+            Time: {{.Time}}
+            Nonce: {{.Nonce}}
+            Data: {{.Data}}
+            PrevHash {{.Prevhash}}
+        </li>
+        {{end}}
+    </ul >
+    {{end}}
+    
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+</body>
+</html>
