@@ -1,9 +1,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>DataChain</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>    
 </head>
 <!-- TODO: 
     mostrar blocos em cards com links pros outros blocos com o hash dele
@@ -12,31 +16,79 @@
     filtrar com sql? 
 
 -->
-<body>
-    <form method="POST" action="/add">
-        <button type="submit">add</button>
-    </form>
-    Blocos:
-    <form method="POST">
-        <label for="query">Query SQL</label>
-        <input type="text" name="query" id="" style="width:85%">
-        <button type="submit">Run Query</button>
-    </form>
+<body onhashchange="setActive()">
+    <div class="card">
+        <form method="POST">
+            <div class="form-group">
+                <label for="query" class="form-control text-center ">Query SQL</label>
+                <input type="text" class="form-control" name="query" id="" value="SELECT * FROM blockchain ORDER BY time,prevhash,nonce;">
+                <button type="submit" class="form-control btn-primary">Run Query</button>
+            </div>
+        </form>
+        
+        <form method="POST" action="/add">
+            <div class="form-group">
+                <button type="submit">Add block</button>
+            </div>
+        </form>
+    </div>
     {{if .Err}}
         {{.Msg}}
     {{else}}
-    <ul>
+    <!-- <ul> -->
+    <div class="card-columns">
         {{range .Bc}}
-        <li>
-            Time: {{.Time}}
-            Nonce: {{.Nonce}}
-            Data: {{.Data}}
-            PrevHash {{.Prevhash}}
-        </li>
+        <div id="{{.Hash}}" class="card">
+            <h5 class="card-header">
+                {{.Hash}}
+            </h5>
+            <div class="card-body">    
+                Data: {{.Data}}
+            </div>
+            <ul class="list-group list-group-flush" id="block">
+                <li class="list-group-item">
+                    Time: {{.Time}}
+                </li>
+                <li class="list-group-item">
+                    Nonce: {{.Nonce}}
+                </li>
+                <li class="list-group-item" id="phash">
+                    PrevHash <a class="card-link" href="#{{.Prevhash}}">{{.Prevhash}}</a>
+                </li>
+            </ul>
+        </div>
         {{end}}
-    </ul >
+    </div>
+    <!-- </ul > -->
     {{end}}
-    
-    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <style>
+    #block li:hover {
+        background-color: lightgrey;
+    }
+    .card-columns {
+        @include media-breakpoint-only(lg) {
+            column-count: 4;
+        }
+        @include media-breakpoint-only(xl) {
+            column-count: 5;
+        }
+    }
+    </style>
+    <script>
+        function getAnchor() {
+            var currentUrl = document.URL,
+            urlParts   = currentUrl.split('#');
+                
+            return (urlParts.length > 1) ? urlParts[1] : null;
+        }
+        var last = "";
+        function setActive(){
+            if (last != "" ){
+                document.getElementById(last).classList.remove("border-primary");
+            }
+            document.getElementById(getAnchor()).classList.add("border-primary");
+            last = getAnchor();
+        }
+    </script>
 </body>
 </html>

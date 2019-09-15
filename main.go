@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"os"
@@ -24,11 +24,11 @@ type Block struct {
 }
 
 type PrettyBlock struct {
-	Time     int64  `json:"time"`
-	Nonce    int64  `json:"nonce"`
-	Data     string `json:"data"`
-	Prevhash string `json:"prev_hash"`
-	Hash     string `json:"hash"`
+	Time     time.Time `json:"time"`
+	Nonce    int64     `json:"nonce"`
+	Data     string    `json:"data"`
+	Prevhash string    `json:"prev_hash"`
+	Hash     string    `json:"hash"`
 }
 
 type Blockchain []Block
@@ -263,7 +263,9 @@ func (b Block) SaveBlock(blockfile string) error {
 func (b Block) Prettify() PrettyBlock {
 	data, err := json.Marshal(b)
 	check(err)
-	return PrettyBlock{b.Time, b.Nonce, string(b.Data), hex.EncodeToString(b.Prevhash), hex.EncodeToString(cryptonight.Sum(data, 0))}
+	prev := string(hex.EncodeToString(b.Prevhash))
+	curr := string(hex.EncodeToString(cryptonight.Sum(data, 0)))
+	return PrettyBlock{time.Unix(0, b.Time), b.Nonce, string(b.Data), prev, curr}
 }
 
 type PrettyChain []PrettyBlock
@@ -277,7 +279,8 @@ func (bc Blockchain) Prettify() PrettyChain {
 }
 
 func Server(path string, bc Blockchain, blockfile string) {
-
+	bc = bc.Comb()
+	bc.Tofile(blockfile)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		tmpl := template.Must(template.ParseFiles("../index.html"))
 		if r.Method != http.MethodPost {
@@ -320,8 +323,38 @@ func Server(path string, bc Blockchain, blockfile string) {
 		// http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 
-	// fs := http.FileServer(http.Dir("static/"))
-	// http.Handle("/static/", http.StripPrefix("/static/", fs))
+	http.HandleFunc("/query", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Write([]byte("The request must be POST"))
+			return
+		}
+		data, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			w.Write([]byte("Invalid body"))
+			return
+		}
+		qry := struct {
+			Query string
+		}{}
+		err = json.Unmarshal(data, &qry)
+		if err != nil {
+			w.Write([]byte("the body must be a JSON containing a field named Query, with the SQL query as a string"))
+			return
+		}
+		bc, err := queryBlocks(qry.Query, blockfile)
+		if err != nil {
+			w.Write([]byte("Error on running query" + fmt.Sprint(err)))
+		}
+		out, err := json.Marshal(bc.Prettify())
+		if err != nil {
+			w.Write([]byte("Error on the blockchain" + fmt.Sprint(err)))
+			return
+		}
+		w.Write(out)
+	})
+
+	fs := http.FileServer(http.Dir("static/"))
+	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
 	http.ListenAndServe(path, nil)
 }
